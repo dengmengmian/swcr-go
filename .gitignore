@@ -1,4 +1,5 @@
 /_reference/
 /dist/
+/swcr
 *.docx
 !testdata/*.docx
