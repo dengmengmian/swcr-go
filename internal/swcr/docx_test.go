@@ -114,6 +114,11 @@ func parseSE(t *testing.T, data []byte) *se {
 	return root
 }
 
+// TestDocx_AssertNoCommentOrBlankLines generates a DOCX from a mixed set of
+// input lines (code, blank lines, line-comment lines, and the start of a
+// block comment), then asserts that the resulting document.xml contains
+// exactly 5 <w:t> elements — none of which are blank or start with a comment
+// prefix.  This is the core guarantee the stripper must uphold.
 func TestDocx_AssertNoCommentOrBlankLines(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test.docx")
 	opts := DefaultWriterOpts()
@@ -148,10 +153,12 @@ func TestDocx_AssertNoCommentOrBlankLines(t *testing.T) {
 	docXML := readZipEntry(t, tmp, "word/document.xml")
 	root := parseSE(t, docXML)
 
+	// Root must be "document".
 	if root.Name != "document" {
 		t.Fatalf("root element is %q, want %q", root.Name, "document")
 	}
 
+	// Every <w:t> must be non-empty and must not start with a comment prefix.
 	texts := root.findAll("t")
 	for _, tt := range texts {
 		if tt.Text == "" {
@@ -163,11 +170,16 @@ func TestDocx_AssertNoCommentOrBlankLines(t *testing.T) {
 		}
 	}
 
+	// Expected 5 surviving code lines.
 	if len(texts) != 5 {
 		t.Errorf("expected 5 w:t elements, got %d", len(texts))
 	}
 }
 
+// TestDocx_HeaderContainsTitleAndPageField verifies the header XML (header1.xml)
+// contains the title text and a PAGE field instruction — the building blocks of
+// the 页眉居中标题 + 右侧页码 layout required by China's Copyright Protection
+// Center.
 func TestDocx_HeaderContainsTitleAndPageField(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test_header.docx")
 	opts := DefaultWriterOpts()
@@ -208,6 +220,10 @@ func TestDocx_HeaderContainsTitleAndPageField(t *testing.T) {
 	}
 }
 
+// TestDocx_ParagraphProperties verifies the paragraph spacing and font
+// properties in the generated document.xml exactly match the empirically
+// tuned values that produce 50 lines per A4 page (宋体 10.5pt, fixed
+// 10.5pt line spacing, 0pt before, 2.3pt after).
 func TestDocx_ParagraphProperties(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test_props.docx")
 	opts := DefaultWriterOpts()
@@ -236,6 +252,7 @@ func TestDocx_ParagraphProperties(t *testing.T) {
 	if sp.Attrs["lineRule"] != "exact" {
 		t.Errorf("line rule: got %q, want 'exact'", sp.Attrs["lineRule"])
 	}
+	// before=0 → attribute may legitimately be omitted.
 	if sp.Attrs["before"] != "" {
 		t.Errorf("space before: got %q, want empty/omitted (0)", sp.Attrs["before"])
 	}
@@ -257,6 +274,9 @@ func TestDocx_ParagraphProperties(t *testing.T) {
 	}
 }
 
+// TestDocx_ValidZipStructure verifies that the five essential OOXML entries
+// exist in the output ZIP.  A missing entry means Word (or any compliant
+// reader) will reject the file.
 func TestDocx_ValidZipStructure(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test_structure.docx")
 	opts := DefaultWriterOpts()
@@ -295,6 +315,15 @@ func TestDocx_ValidZipStructure(t *testing.T) {
 	}
 }
 
+// TestDocx_DocumentStructure asserts correct OOXML document shape:
+//
+//	root   = w:document
+//	child  = w:body
+//	sectPr = last child of w:body (required by the spec — paragraph
+//	         properties are scoped to the preceding section)
+//
+// If sectPr is not the final child of w:body, Word may silently drop the
+// header reference or page dimensions.
 func TestDocx_DocumentStructure(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test_struct.docx")
 	opts := DefaultWriterOpts()
@@ -311,16 +340,19 @@ func TestDocx_DocumentStructure(t *testing.T) {
 	docXML := readZipEntry(t, tmp, "word/document.xml")
 	root := parseSE(t, docXML)
 
+	// 1. Root must be "document".
 	if root.Name != "document" {
 		t.Fatalf("root element: got %q, want 'document'", root.Name)
 	}
 
+	// 2. w:document must contain exactly one w:body.
 	bodies := root.findAll("body")
 	if len(bodies) != 1 {
 		t.Fatalf("expected exactly 1 w:body under w:document, got %d", len(bodies))
 	}
 	body := bodies[0]
 
+	// 3. w:body must have at least one w:p and exactly one w:sectPr.
 	if len(body.findAll("p")) < 1 {
 		t.Error("w:body has no w:p children")
 	}
@@ -329,6 +361,7 @@ func TestDocx_DocumentStructure(t *testing.T) {
 		t.Fatalf("expected exactly 1 w:sectPr, got %d", len(sectPrs))
 	}
 
+	// 4. w:sectPr must be the LAST child of w:body.
 	lastChild := body.Children[len(body.Children)-1]
 	if lastChild.Name != "sectPr" {
 		t.Errorf("last child of w:body is %q, want 'sectPr'", lastChild.Name)

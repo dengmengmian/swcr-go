@@ -36,12 +36,7 @@ archives:
         format: zip
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^docs:'
-      - '^chore:'
-      - '^ci:'
+  disable: true
 
 checksum:
   name_template: checksums.txt
