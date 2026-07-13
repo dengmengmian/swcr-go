@@ -148,7 +148,7 @@ func init() {
 		"关闭默认块注释支持（/* */, <!-- -->, \"\"\" \"\"\", ''' '''）")
 }
 
-func run(cmd *cobra.Command, args []string) error {
+func run(_ *cobra.Command, _ []string) error {
 	level := slog.LevelInfo
 	if verbose {
 		level = slog.LevelDebug

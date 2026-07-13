@@ -552,8 +552,8 @@ func marshalEncode(w io.Writer, v any) error {
 	if err != nil {
 		return err
 	}
-	if _, err := w.Write([]byte(xml.Header)); err != nil {
-		return err
+	if _, writeErr := w.Write([]byte(xml.Header)); writeErr != nil {
+		return writeErr
 	}
 	_, err = w.Write(data)
 	return err

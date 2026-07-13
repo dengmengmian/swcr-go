@@ -20,7 +20,7 @@ def hello():
 
 print("done")
 `
-	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -67,13 +67,13 @@ func TestCodeWriter_CollectLines(t *testing.T) {
 
 	// File 1: Python
 	src1 := filepath.Join(dir, "a.py")
-	if err := os.WriteFile(src1, []byte("# comment\nprint(1)\n\nprint(2)\n"), 0o644); err != nil {
+	if err := os.WriteFile(src1, []byte("# comment\nprint(1)\n\nprint(2)\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	// File 2: Go
 	src2 := filepath.Join(dir, "b.go")
-	if err := os.WriteFile(src2, []byte("// comment\npackage main\n"), 0o644); err != nil {
+	if err := os.WriteFile(src2, []byte("// comment\npackage main\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -99,7 +99,7 @@ func TestCodeWriter_BlockCommentInFiles(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "test.c")
 	content := "int main() {\n    /* block\n       comment */\n    return 0;\n}\n"
-	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

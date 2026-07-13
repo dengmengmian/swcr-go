@@ -23,10 +23,11 @@ func readZipEntry(t *testing.T, zipPath, entryName string) []byte {
 			if err != nil {
 				t.Fatalf("open entry %s: %v", entryName, err)
 			}
-			defer rc.Close()
 			var buf bytes.Buffer
-			if _, err := buf.ReadFrom(rc); err != nil {
-				t.Fatalf("read entry %s: %v", entryName, err)
+			_, readErr := buf.ReadFrom(rc)
+			rc.Close()
+			if readErr != nil {
+				t.Fatalf("read entry %s: %v", entryName, readErr)
 			}
 			return buf.Bytes()
 		}
@@ -113,9 +114,6 @@ func parseSE(t *testing.T, data []byte) *se {
 	return root
 }
 
-// TestDocx_AssertNoCommentOrBlankLines generates a DOCX with mixed content
-// and verifies the resulting document.xml contains no comment lines or blank
-// lines.
 func TestDocx_AssertNoCommentOrBlankLines(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test.docx")
 	opts := DefaultWriterOpts()
@@ -150,12 +148,10 @@ func TestDocx_AssertNoCommentOrBlankLines(t *testing.T) {
 	docXML := readZipEntry(t, tmp, "word/document.xml")
 	root := parseSE(t, docXML)
 
-	// Root must be "document"
 	if root.Name != "document" {
 		t.Fatalf("root element is %q, want %q", root.Name, "document")
 	}
 
-	// All w:t elements should not contain comment prefixes or be empty.
 	texts := root.findAll("t")
 	for _, tt := range texts {
 		if tt.Text == "" {
@@ -167,14 +163,11 @@ func TestDocx_AssertNoCommentOrBlankLines(t *testing.T) {
 		}
 	}
 
-	// Expected 5 code lines.
 	if len(texts) != 5 {
 		t.Errorf("expected 5 w:t elements, got %d", len(texts))
 	}
 }
 
-// TestDocx_HeaderContainsTitleAndPageField verifies the header XML contains
-// the title text and a PAGE field instruction.
 func TestDocx_HeaderContainsTitleAndPageField(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test_header.docx")
 	opts := DefaultWriterOpts()
@@ -215,8 +208,6 @@ func TestDocx_HeaderContainsTitleAndPageField(t *testing.T) {
 	}
 }
 
-// TestDocx_ParagraphProperties verifies the paragraph spacing and font
-// properties match the settings for 50-lines-per-page.
 func TestDocx_ParagraphProperties(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test_props.docx")
 	opts := DefaultWriterOpts()
@@ -245,7 +236,6 @@ func TestDocx_ParagraphProperties(t *testing.T) {
 	if sp.Attrs["lineRule"] != "exact" {
 		t.Errorf("line rule: got %q, want 'exact'", sp.Attrs["lineRule"])
 	}
-	// before=0 → attribute may be omitted
 	if sp.Attrs["before"] != "" {
 		t.Errorf("space before: got %q, want empty/omitted (0)", sp.Attrs["before"])
 	}
@@ -267,7 +257,6 @@ func TestDocx_ParagraphProperties(t *testing.T) {
 	}
 }
 
-// TestDocx_ValidZipStructure verifies essential entries exist in the ZIP.
 func TestDocx_ValidZipStructure(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test_structure.docx")
 	opts := DefaultWriterOpts()
@@ -277,8 +266,8 @@ func TestDocx_ValidZipStructure(t *testing.T) {
 	}
 	doc.SetHeader("Test")
 	doc.AddParagraph("line")
-	if err := doc.Save(); err != nil {
-		t.Fatal(err)
+	if saveErr := doc.Save(); saveErr != nil {
+		t.Fatal(saveErr)
 	}
 
 	r, err := zip.OpenReader(tmp)
@@ -306,8 +295,6 @@ func TestDocx_ValidZipStructure(t *testing.T) {
 	}
 }
 
-// TestDocx_DocumentStructure verifies the correct OOXML structure:
-// root = w:document, child = w:body, sectPr = last child of w:body.
 func TestDocx_DocumentStructure(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "test_struct.docx")
 	opts := DefaultWriterOpts()
@@ -324,19 +311,16 @@ func TestDocx_DocumentStructure(t *testing.T) {
 	docXML := readZipEntry(t, tmp, "word/document.xml")
 	root := parseSE(t, docXML)
 
-	// 1. Root must be "document"
 	if root.Name != "document" {
 		t.Fatalf("root element: got %q, want 'document'", root.Name)
 	}
 
-	// 2. Root must have a single child "body"
 	bodies := root.findAll("body")
 	if len(bodies) != 1 {
 		t.Fatalf("expected exactly 1 w:body under w:document, got %d", len(bodies))
 	}
 	body := bodies[0]
 
-	// 3. w:body must have at least one w:p and exactly one w:sectPr
 	if len(body.findAll("p")) < 1 {
 		t.Error("w:body has no w:p children")
 	}
@@ -345,7 +329,6 @@ func TestDocx_DocumentStructure(t *testing.T) {
 		t.Fatalf("expected exactly 1 w:sectPr, got %d", len(sectPrs))
 	}
 
-	// 4. w:sectPr must be the LAST child of w:body
 	lastChild := body.Children[len(body.Children)-1]
 	if lastChild.Name != "sectPr" {
 		t.Errorf("last child of w:body is %q, want 'sectPr'", lastChild.Name)

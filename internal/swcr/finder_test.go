@@ -16,7 +16,7 @@ func makeTempTree(t *testing.T, files map[string]string) string {
 			t.Fatal(err)
 		}
 		if content != "" {
-			if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		} else {
