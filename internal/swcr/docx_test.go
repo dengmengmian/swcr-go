@@ -137,15 +137,10 @@ func TestDocx_AssertNoCommentOrBlankLines(t *testing.T) {
 		"	fmt.Println(\"// not a comment\")",
 	}
 	for _, l := range lines {
-		l = strings.TrimRight(l, " \t\r")
-		if isBlankLine(l) {
-			continue
+		cs := NewCommentStripper([]string{"#", "//"}, nil)
+		if line, ok := cs.ProcessLine(l); ok {
+			doc.AddParagraph(line)
 		}
-		cw := &CodeWriter{CommentChars: []string{"#", "//"}}
-		if cw.isCommentLine(l) {
-			continue
-		}
-		doc.AddParagraph(l)
 	}
 	doc.SetHeader("TestApp V1.0")
 	if err := doc.Save(); err != nil {

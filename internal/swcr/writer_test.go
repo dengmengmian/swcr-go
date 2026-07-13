@@ -7,48 +7,6 @@ import (
 	"testing"
 )
 
-func TestIsBlankLine(t *testing.T) {
-	tests := []struct {
-		line     string
-		expected bool
-	}{
-		{"", true},
-		{"   ", true},
-		{"\t\t", true},
-		{"  \t  ", true},
-		{"code", false},
-		{"  code  ", false},
-	}
-	for _, tt := range tests {
-		if got := isBlankLine(tt.line); got != tt.expected {
-			t.Errorf("isBlankLine(%q) = %v, want %v", tt.line, got, tt.expected)
-		}
-	}
-}
-
-func TestIsCommentLine(t *testing.T) {
-	w := &CodeWriter{CommentChars: []string{"#", "//"}}
-	tests := []struct {
-		line     string
-		expected bool
-	}{
-		{"# comment", true},
-		{"  # indented comment", true},
-		{"// comment", true},
-		{"  // indented comment", true},
-		{"code # not comment", false},
-		{"  code // still not", false},
-		{"/* block comment", false},
-		{"code", false},
-		{"", false},
-	}
-	for _, tt := range tests {
-		if got := w.isCommentLine(tt.line); got != tt.expected {
-			t.Errorf("isCommentLine(%q) = %v, want %v", tt.line, got, tt.expected)
-		}
-	}
-}
-
 func TestCodeWriter_FiltersBlanksAndComments(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "test.py")
@@ -73,7 +31,8 @@ print("done")
 		t.Fatal(err)
 	}
 
-	w := NewCodeWriter([]string{"#", "//"}, opts, doc)
+	stripper := NewCommentStripper([]string{"#", "//"}, nil)
+	w := NewCodeWriter(stripper, opts, doc)
 	w.WriteHeader("Test")
 	if err := w.WriteFiles([]string{src}); err != nil {
 		t.Fatal(err)
@@ -100,5 +59,64 @@ print("done")
 	// Expect only: def hello():, return "hello", print("done")
 	if len(texts) != 3 {
 		t.Errorf("expected 3 code lines, got %d", len(texts))
+	}
+}
+
+func TestCodeWriter_CollectLines(t *testing.T) {
+	dir := t.TempDir()
+
+	// File 1: Python
+	src1 := filepath.Join(dir, "a.py")
+	if err := os.WriteFile(src1, []byte("# comment\nprint(1)\n\nprint(2)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// File 2: Go
+	src2 := filepath.Join(dir, "b.go")
+	if err := os.WriteFile(src2, []byte("// comment\npackage main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stripper := NewCommentStripper([]string{"#", "//"}, nil)
+	w := NewCodeWriter(stripper, DefaultWriterOpts(), nil)
+	lines, err := w.CollectLines([]string{src1, src2})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"print(1)", "print(2)", "package main"}
+	if len(lines) != len(want) {
+		t.Fatalf("got %d lines, want %d: %v", len(lines), len(want), lines)
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Errorf("line %d: got %q, want %q", i, lines[i], want[i])
+		}
+	}
+}
+
+func TestCodeWriter_BlockCommentInFiles(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "test.c")
+	content := "int main() {\n    /* block\n       comment */\n    return 0;\n}\n"
+	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stripper := NewCommentStripper([]string{"//"}, []string{"/*:*/"})
+	w := NewCodeWriter(stripper, DefaultWriterOpts(), nil)
+	lines, err := w.CollectLines([]string{src})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{"int main() {", "    return 0;", "}"}
+	if len(lines) != len(want) {
+		t.Fatalf("got %d lines, want %d: %v", len(lines), len(want), lines)
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Errorf("line %d: got %q, want %q", i, lines[i], want[i])
+		}
 	}
 }

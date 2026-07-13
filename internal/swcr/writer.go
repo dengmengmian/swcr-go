@@ -4,85 +4,95 @@ import (
 	"bufio"
 	"log/slog"
 	"os"
-	"strings"
 )
 
 // CodeWriter reads source files, filters out blank and comment lines, and
 // writes the remaining lines as formatted paragraphs into a Document.
 type CodeWriter struct {
-	CommentChars []string
-	opts         *WriterOpts
-	doc          *Document
+	stripper *CommentStripper
+	opts     *WriterOpts
+	doc      *Document
 }
 
-// NewCodeWriter creates a CodeWriter. commentChars are the line prefixes that
-// identify a comment (e.g. "#", "//"). commentChars defaults to ["#", "//"]
-// when empty, matching the Python swcr behaviour.
+// NewCodeWriter creates a CodeWriter.
 func NewCodeWriter(
-	commentChars []string,
+	stripper *CommentStripper,
 	opts *WriterOpts,
 	doc *Document,
 ) *CodeWriter {
-	if len(commentChars) == 0 {
-		commentChars = []string{"#", "//"}
-	}
 	return &CodeWriter{
-		CommentChars: commentChars,
-		opts:         opts,
-		doc:          doc,
+		stripper: stripper,
+		opts:     opts,
+		doc:      doc,
 	}
 }
 
-// isBlankLine reports whether line is empty or whitespace-only.
-func isBlankLine(line string) bool {
-	return strings.TrimSpace(line) == ""
-}
-
-// isCommentLine reports whether line (after stripping leading whitespace)
-// starts with one of the registered comment prefixes.
-func (w *CodeWriter) isCommentLine(line string) bool {
-	trimmed := strings.TrimLeft(line, " \t")
-	for _, c := range w.CommentChars {
-		if strings.HasPrefix(trimmed, c) {
-			return true
-		}
-	}
-	return false
-}
-
-// WriteFiles reads each file in files, filters lines, and adds them to the
-// underlying Document.
-func (w *CodeWriter) WriteFiles(files []string) error {
+// CollectLines reads all files, applies the comment stripper, and returns
+// every kept line in order (right-trimmed, indentation preserved).
+func (w *CodeWriter) CollectLines(files []string) ([]string, error) {
+	w.stripper.Reset()
+	var all []string
 	for _, path := range files {
-		if err := w.writeFile(path); err != nil {
-			return err
+		lines, err := w.collectFile(path)
+		if err != nil {
+			return nil, err
 		}
+		all = append(all, lines...)
 	}
-	return nil
+	return all, nil
 }
 
-func (w *CodeWriter) writeFile(path string) error {
+func (w *CodeWriter) collectFile(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer f.Close()
 
+	var kept []string
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
-		line := strings.TrimRight(sc.Text(), " \t\r")
-		if isBlankLine(line) {
-			continue
+		if line, ok := w.stripper.ProcessLine(sc.Text()); ok {
+			kept = append(kept, line)
 		}
-		if w.isCommentLine(line) {
-			continue
-		}
-		w.doc.AddParagraph(line)
 	}
 	if err := sc.Err(); err != nil {
-		return err
+		return nil, err
 	}
-	slog.Debug("processed file", "path", path)
+	slog.Debug("processed file", "path", path, "kept", len(kept))
+	return kept, nil
+}
+
+// WriteLines writes the given lines to the underlying Document as formatted
+// paragraphs.
+func (w *CodeWriter) WriteLines(lines []string) {
+	for _, line := range lines {
+		w.doc.AddParagraph(line)
+	}
+}
+
+// WriteFiles reads each file, filters lines through the comment stripper,
+// and writes them to the underlying Document. It resets the stripper state
+// before processing.
+func (w *CodeWriter) WriteFiles(files []string) error {
+	w.stripper.Reset()
+	for _, path := range files {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		sc := bufio.NewScanner(f)
+		for sc.Scan() {
+			if line, ok := w.stripper.ProcessLine(sc.Text()); ok {
+				w.doc.AddParagraph(line)
+			}
+		}
+		f.Close()
+		if err := sc.Err(); err != nil {
+			return err
+		}
+		slog.Debug("processed file", "path", path)
+	}
 	return nil
 }
 

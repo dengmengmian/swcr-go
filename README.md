@@ -12,6 +12,16 @@
 - **跨平台单二进制**：Go 编译为独立可执行文件，无需 Python 环境。
 - **CLI 框架**：使用 `spf13/cobra`，与原版 `click` 体验一致。
 
+**Go 版增强功能**（相比原版新增）：
+
+- **块注释支持**：自动识别 `/* */`、`<!-- -->`、`""" """`、`''' '''` 等多行注释，支持自定义块注释对。
+- **智能排除**：默认自动跳过 `node_modules`、`vendor`、`__pycache__`、`.venv`、`dist`、`build`、`target` 等构建/依赖目录，以及 `.pyc`、`.class`、`.o`、`.so` 等二进制文件。
+- **预览模式（dry-run）**：`--dry-run` 打印文件数、代码行数、预估页数，不生成 `.docx`。
+- **页数截取**：`--max-pages N` 限制输出页数，支持 `--page-mode first|last|front30back30` 三种策略，适配「前 30 页 + 后 30 页」等常见软著场景。
+- **确定性排序**：输出文件按路径字母序排列。
+- **`--version`**：打印版本信息和构建元数据。
+- **Shell 补全**：内置 `swcr completion bash|zsh|fish|powershell`。
+
 致谢原作者 **kenley** —— 本项目的参数设计、格式参数和核心算法均源于原项目。
 
 ## 安装
@@ -53,9 +63,34 @@ swcr [flags]
 | `--outfile` | `-o` | `code.docx` | 输出文件路径（.docx） |
 | `--verbose` | `-v` | `false` | 打印详细日志 |
 
+### 新增参数（Go 版）
+
+| 参数 | 短名 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--no-auto-exclude` | | `false` | 关闭智能排除 |
+| `--dry-run` | | `false` | 预览文件数/行数/页数，不生成 docx |
+| `--max-pages` | | `0`（不限制） | 最大页数，超出时按 `--page-mode` 截取 |
+| `--page-mode` | | `first` | 截取策略：`first`（前N页）、`last`（后N页）、`front30back30`（前后各半） |
+| `--lines-per-page` | | `50` | 每页行数（用于预估和截取） |
+| `--block-comment` | `-b` | | 块注释对 `OPEN:CLOSE`（例如 `-b "/*:*/"`），可多次指定 |
+| `--no-block-comment` | | `false` | 关闭默认块注释（`/* */`、`<!-- -->`、`""" """`、`''' '''`） |
+
 ### 示例
 
 以下示例使用 [django-guardian](https://github.com/django-guardian/django-guardian) 项目演示。
+
+#### 预览：看看会生成多少内容
+
+```bash
+swcr -i ./myproject -e py --dry-run
+```
+
+输出示例：
+```
+Files found : 142
+Code lines  : 8450
+Est. pages  : 169  (@ 50 lines/page)
+```
 
 #### 基础用法：扫描当前目录的 `.py` 文件
 
@@ -111,6 +146,20 @@ swcr -i ./myproject \
     -o output.docx
 ```
 
+#### 超长项目截取（前后各 30 页）
+
+```bash
+swcr -i ./myproject -e py \
+    --max-pages 60 --page-mode front30back30 \
+    -o output.docx
+```
+
+#### Shell 自动补全
+
+```bash
+source <(swcr completion bash)
+```
+
 #### 详细日志
 
 ```bash
@@ -133,13 +182,25 @@ swcr -i ./myproject -v -o output.docx
 
 ```bash
 # 构建
-go build ./...
+make build
 
 # 静态检查
-go vet ./...
+make vet
 
 # 测试（含竞态检测）
-go test -race -count=1 ./...
+make test
+
+# 格式化检查
+make lint
+```
+
+### 发布
+
+本仓库使用 [GoReleaser](https://goreleaser.com) 自动构建跨平台二进制和发布 GitHub Release。配置见 [`.goreleaser.yml`](./.goreleaser.yml)。
+
+```bash
+# 本地测试发布流程（不会真正推送）
+goreleaser release --snapshot --clean
 ```
 
 ## License

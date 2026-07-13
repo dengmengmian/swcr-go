@@ -9,11 +9,68 @@ import (
 	"strings"
 )
 
+// autoExcludeDirs are directory names that are automatically skipped unless
+// auto-exclude is disabled. These are common build-output, dependency, and
+// IDE directories that should never appear in software copyright materials.
+var autoExcludeDirs = map[string]bool{
+	"node_modules":     true,
+	"vendor":           true,
+	"__pycache__":      true,
+	".venv":            true,
+	"venv":             true,
+	".tox":             true,
+	"dist":             true,
+	"build":            true,
+	"target":           true,
+	".next":            true,
+	".nuxt":            true,
+	".cache":           true,
+	"bower_components": true,
+	".idea":            true,
+	".vscode":          true,
+}
+
+// autoExcludeExts are file extensions that are automatically skipped.
+var autoExcludeExts = map[string]bool{
+	".pyc":   true,
+	".pyo":   true,
+	".class": true,
+	".o":     true,
+	".so":    true,
+	".dylib": true,
+	".dll":   true,
+	".exe":   true,
+	".bin":   true,
+	".obj":   true,
+	".a":     true,
+	".lib":   true,
+	".wasm":  true,
+}
+
+// isAutoExcludedName reports whether the file/dir name matches an auto-exclude
+// pattern (extension or minified file suffix).
+func isAutoExcludedName(name string) bool {
+	for ext := range autoExcludeExts {
+		if strings.HasSuffix(name, ext) {
+			return true
+		}
+	}
+	// Minified frontend assets.
+	if strings.HasSuffix(name, ".min.js") || strings.HasSuffix(name, ".min.css") {
+		return true
+	}
+	return false
+}
+
 // CodeFinder recursively scans directories for source code files matching
 // given extensions, skipping hidden files/directories and excluded paths.
 type CodeFinder struct {
 	// Exts is the list of file suffixes to match (without leading dot, e.g. "py", "go").
 	Exts []string
+
+	// AutoExclude controls whether common build/dependency directories and
+	// binary file extensions are automatically skipped. Defaults to true.
+	AutoExclude bool
 }
 
 // NewCodeFinder creates a CodeFinder with the given extensions. If exts is
@@ -22,7 +79,7 @@ func NewCodeFinder(exts []string) *CodeFinder {
 	if len(exts) == 0 {
 		exts = []string{"py"}
 	}
-	return &CodeFinder{Exts: exts}
+	return &CodeFinder{Exts: exts, AutoExclude: true}
 }
 
 // isCode reports whether the filename (not full path) ends with one of the
@@ -75,6 +132,21 @@ func (f *CodeFinder) Find(indir string, excludes []string) ([]string, error) {
 				return filepath.SkipDir
 			}
 			return nil
+		}
+
+		// Auto-exclude common build/dependency directories and binary files.
+		if f.AutoExclude {
+			if d.IsDir() {
+				if autoExcludeDirs[name] {
+					slog.Debug("auto-excluding directory", "name", name, "path", path)
+					return filepath.SkipDir
+				}
+			} else {
+				if isAutoExcludedName(name) {
+					slog.Debug("auto-excluding file", "name", name, "path", path)
+					return nil
+				}
+			}
 		}
 
 		// Get absolute path for exclusion check.
